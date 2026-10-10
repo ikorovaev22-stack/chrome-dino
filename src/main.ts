@@ -7,9 +7,12 @@ import './interstitial_common.css';
 import './neterror.css';
 import './neterror.js';
 
+import {EXTRAS_ENABLED} from './extras/mode.js';
 import {getLanguage, getLoadTimeData} from './strings.js';
 
-const HIGH_SCORE_KEY = 'chrome-dino:high-score';
+// Scores with coins and power-ups are kept apart from classic ones.
+const HIGH_SCORE_KEY =
+    EXTRAS_ENABLED ? 'chrome-dino:high-score-extended' : 'chrome-dino:high-score';
 
 function readHighScore(): number {
   try {

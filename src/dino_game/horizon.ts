@@ -17,6 +17,15 @@ import {spriteDefinitionByType} from './offline_sprite_definitions.js';
 import {getRandomNum} from './utils.js';
 
 /**
+ * chrome-dino extras: creates an extra obstacle type, or returns null to let
+ * the horizon pick one of the original obstacles.
+ */
+export type ObstacleFactory =
+    (canvasCtx: CanvasRenderingContext2D, dimensions: Dimensions,
+     gapCoefficient: number, speed: number,
+     resourceProvider: ImageSpriteProvider&GameStateProvider) => Obstacle|null;
+
+/**
  * Horizon background class.
  */
 export class Horizon {
@@ -46,6 +55,9 @@ export class Horizon {
 
   // Horizon
   private horizonLines: HorizonLine[] = [];
+
+  // chrome-dino extras.
+  private obstacleFactory: ObstacleFactory|null = null;
 
   constructor(
       canvas: HTMLCanvasElement, spritePos: SpritePositions,
@@ -248,10 +260,24 @@ export class Horizon {
     this.obstacles.shift();
   }
 
+  // chrome-dino extras.
+  setObstacleFactory(factory: ObstacleFactory) {
+    this.obstacleFactory = factory;
+  }
+
   /**
    * Add a new obstacle.
    */
   addNewObstacle(currentSpeed: number) {
+    // chrome-dino extras: now and then an extra obstacle type.
+    const extraObstacle = this.obstacleFactory?.(
+        this.canvasCtx, this.dimensions, this.gapCoefficient, currentSpeed,
+        this.resourceProvider);
+    if (extraObstacle) {
+      this.obstacles.push(extraObstacle);
+      return;
+    }
+
     const obstacleCount =
         this.obstacleTypes[this.obstacleTypes.length - 1]!.type !==
                 'collectable' ||

@@ -478,6 +478,18 @@ export class Trex {
   }
 
   /**
+   * chrome-dino extras: second jump in mid-air (double jump power-up). The
+   * boost is capped so the dino stays inside the canvas.
+   */
+  doubleJump() {
+    const maxVelocity =
+        Math.sqrt(2 * this.config.gravity * Math.max(0, this.yPos - 4));
+    this.jumpVelocity =
+        -Math.min(-this.config.initialJumpVelocity, maxVelocity);
+    this.speedDrop = false;
+  }
+
+  /**
    * Jump is complete, falling down.
    */
   endJump() {

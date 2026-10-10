@@ -43,7 +43,8 @@ export class Obstacle {
   yPos: number = 0;
   typeConfig: ObstacleType;
 
-  private canvasCtx: CanvasRenderingContext2D;
+  // chrome-dino extras: protected so extra obstacle types can draw.
+  protected canvasCtx: CanvasRenderingContext2D;
   private spritePos: SpritePosition;
   private gapCoefficient: number;
   private speedOffset: number = 0;
@@ -143,7 +144,7 @@ export class Obstacle {
   /**
    * Draw and crop based on size.
    */
-  private draw() {
+  protected draw() {
     let sourceWidth = this.typeConfig.width;
     let sourceHeight = this.typeConfig.height;
 

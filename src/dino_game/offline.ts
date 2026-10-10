@@ -23,6 +23,11 @@ import {CollisionBox, GAME_TYPE, spriteDefinitionByType} from './offline_sprite_
 import {Status as TrexStatus, Trex} from './trex.js';
 import {getTimeStamp} from './utils.js';
 
+// chrome-dino extras.
+import {Extras} from '../extras/extras.js';
+import {EXTRAS_ENABLED} from '../extras/mode.js';
+import {createExtraObstacle} from '../extras/obstacles.js';
+
 enum A11yStrings {
   ARIA_LABEL = 'dinoGameA11yAriaLabel',
   DESCRIPTION = 'dinoGameA11yDescription',
@@ -213,6 +218,10 @@ export class Runner implements ImageSpriteProvider, GameStateProvider,
       Partial<{[K in keyof typeof RunnerSounds]: AudioBuffer}> = {};
   private audioContext: AudioContext|null = null;
   private generatedSoundFx: GeneratedSoundFx|null = null;
+
+  // chrome-dino extras: null in classic mode.
+  private extras: Extras|null = null;
+  private lastJumpEvent: Event|null = null;
 
   // Gamepad state.
   private pollingGamepads: boolean = false;
@@ -582,6 +591,19 @@ export class Runner implements ImageSpriteProvider, GameStateProvider,
     this.tRex = new Trex(
         this.canvas, this.spriteDef.tRex, /* resourceProvider= */ this);
 
+    // chrome-dino extras.
+    if (EXTRAS_ENABLED) {
+      this.extras = new Extras({
+        canvas: this.canvas,
+        dimensions: this.dimensions,
+        tRex: this.tRex,
+        horizon: this.horizon,
+        imageSprite: this.getOrigImageSprite(),
+        textSpritePos: this.spriteDef.textSprite,
+      });
+      this.horizon.setObstacleFactory(createExtraObstacle);
+    }
+
     this.outerContainerEl.appendChild(this.containerEl);
     this.outerContainerEl.appendChild(this.slowSpeedCheckboxLabel);
 
@@ -660,7 +682,7 @@ export class Runner implements ImageSpriteProvider, GameStateProvider,
       if (this.playing || this.crashed || this.paused) {
         this.containerEl.style.width = this.dimensions.width + 'px';
         this.containerEl.style.height = this.dimensions.height + 'px';
-        this.distanceMeter.update(0, Math.ceil(this.distanceRan));
+        this.distanceMeter.update(0, Math.ceil(this.getScoreDistance()));
         this.stop();
       } else {
         this.tRex.draw(0, 0);
@@ -806,6 +828,11 @@ export class Runner implements ImageSpriteProvider, GameStateProvider,
 
     this.time = now;
 
+    // chrome-dino extras: slow motion power-up.
+    if (this.playing && this.extras) {
+      deltaTime *= this.extras.timeScale;
+    }
+
     if (this.playing) {
       assert(this.distanceMeter);
       assert(this.horizon);
@@ -845,11 +872,24 @@ export class Runner implements ImageSpriteProvider, GameStateProvider,
             deltaTime, this.currentSpeed, hasObstacles, showNightMode);
       }
 
+      // chrome-dino extras: coins, power-ups and weather.
+      if (this.extras && this.activated && !this.playingIntro &&
+          !this.crashed) {
+        this.extras.update(deltaTime, this.currentSpeed, hasObstacles);
+      }
+
       const firstObstacle = this.horizon.obstacles[0];
 
       // Check for collisions.
       let collision = hasObstacles && firstObstacle &&
           this.checkForCollision(firstObstacle, this.tRex);
+
+      // chrome-dino extras: the shield and the star absorb hits.
+      if (collision && firstObstacle &&
+          this.extras?.absorbCollision(firstObstacle)) {
+        this.horizon.removeFirstObstacle();
+        collision = false;
+      }
 
       // For a11y, audio cues.
       if (this.hasAudioCuesInternal && hasObstacles) {
@@ -893,8 +933,8 @@ export class Runner implements ImageSpriteProvider, GameStateProvider,
         this.gameOver();
       }
 
-      const playAchievementSound =
-          this.distanceMeter.update(deltaTime, Math.ceil(this.distanceRan));
+      const playAchievementSound = this.distanceMeter.update(
+          deltaTime, Math.ceil(this.getScoreDistance()));
 
       if (!this.hasAudioCuesInternal && playAchievementSound) {
         this.playSound(this.soundFx.SCORE);
@@ -926,7 +966,14 @@ export class Runner implements ImageSpriteProvider, GameStateProvider,
 
     if (this.playing ||
         (!this.activated && this.tRex.blinkCount < this.config.maxBlinkCount)) {
+      // chrome-dino extras: the dino flickers while invulnerable.
+      if (this.playing && this.extras) {
+        this.canvasCtx!.globalAlpha = this.extras.trexAlpha();
+      }
       this.tRex.update(deltaTime);
+      if (this.playing && this.extras) {
+        this.extras.drawOverlay();
+      }
       this.scheduleNextUpdate();
     }
   }
@@ -1113,6 +1160,16 @@ export class Runner implements ImageSpriteProvider, GameStateProvider,
               this.playSound(this.soundFx.BUTTON_PRESS);
             }
             this.tRex.startJump(this.currentSpeed);
+            this.lastJumpEvent = e;
+          } else if (
+              this.extras && this.tRex.jumping && e !== this.lastJumpEvent &&
+              !(e instanceof KeyboardEvent && e.repeat) &&
+              this.extras.tryDoubleJump()) {
+            // chrome-dino extras: double jump power-up. The same key press
+            // can arrive twice (canvas and document listeners), hence the
+            // event check.
+            this.lastJumpEvent = e;
+            this.tRex.doubleJump();
           }
         } else if (
             this.playing && e instanceof KeyboardEvent &&
@@ -1378,11 +1435,13 @@ export class Runner implements ImageSpriteProvider, GameStateProvider,
     }
 
     assert(this.gameOverPanel);
+    // chrome-dino extras: keep the counters and weather on the last frame.
+    this.extras?.drawOverlay();
     this.gameOverPanel.draw(this.altGameModeActive, this.tRex);
 
     // Update the high score.
-    if (this.distanceRan > this.highestScore) {
-      this.saveHighScore(this.distanceRan);
+    if (this.getScoreDistance() > this.highestScore) {
+      this.saveHighScore(this.getScoreDistance());
     }
 
     // Reset the time clock.
@@ -1395,7 +1454,8 @@ export class Runner implements ImageSpriteProvider, GameStateProvider,
           getA11yString(A11yStrings.GAME_OVER)
               .replace(
                   '$1',
-                  this.distanceMeter.getActualDistance(this.distanceRan)
+                  this.distanceMeter
+                      .getActualDistance(this.getScoreDistance())
                       .toString()) +
           ' ' +
           getA11yString(A11yStrings.HIGH_SCORE)
@@ -1456,6 +1516,7 @@ export class Runner implements ImageSpriteProvider, GameStateProvider,
       this.distanceMeter.reset();
       this.horizon.reset();
       this.tRex.reset();
+      this.extras?.reset();
       this.playSound(this.soundFx.BUTTON_PRESS);
       this.invert(true);
       this.update();
@@ -1466,6 +1527,13 @@ export class Runner implements ImageSpriteProvider, GameStateProvider,
       this.containerEl.setAttribute('title', getA11yString(A11yStrings.JUMP));
       this.announcePhrase(getA11yString(A11yStrings.STARTED));
     }
+  }
+
+  /**
+   * chrome-dino extras: distance ran plus bonus points, in game pixels.
+   */
+  private getScoreDistance(): number {
+    return this.distanceRan + (this.extras?.bonusDistance ?? 0);
   }
 
   private setPlayStatus(isPlaying: boolean) {
