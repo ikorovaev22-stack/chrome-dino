@@ -80,6 +80,9 @@ export interface AppOptions {
   extras: Extras;
   scene: HTMLCanvasElement;
   fx: HTMLCanvasElement;
+  // Night lighting layers between the game and the interface.
+  shade: HTMLCanvasElement;
+  glow: HTMLCanvasElement;
   viewport: HTMLElement;
   pauseButton: HTMLButtonElement;
   // Chrome's sprite sheet, for the skin previews.
@@ -99,7 +102,7 @@ export class App {
   private options: AppOptions;
   private scenery: Scenery;
   private weather: Weather;
-  private lighting = new Lighting();
+  private lighting: Lighting;
   private sfx = new Sfx();
 
   private screen: Screen = 'title';
@@ -133,6 +136,7 @@ export class App {
     this.extras = options.extras;
     this.sceneCtx = options.scene.getContext('2d')!;
     this.fxCtx = options.fx.getContext('2d')!;
+    this.lighting = new Lighting(options.shade, options.glow);
     this.scenery = new Scenery(this.extras.biome);
     this.weather = new Weather(() => this.width, SCENE_HEIGHT);
     this.weather.reset(this.extras.biome);
@@ -445,7 +449,7 @@ export class App {
 
     const ctx = this.fxCtx;
     ctx.clearRect(0, 0, width, SCENE_HEIGHT);
-    this.drawLighting(ctx, width);
+    this.drawLighting(width);
     this.weather.update(
         deltaTime, groundMove, running ? this.runner.getSpeed() : 0);
     this.weather.draw(ctx);
@@ -483,12 +487,13 @@ export class App {
     }
   }
 
-  private drawLighting(ctx: CanvasRenderingContext2D, width: number) {
+  private drawLighting(width: number) {
     const biome = this.scenery.currentBiome;
     // The volcano is always a little dim, so its lava glows.
     const darkness =
         Math.max(this.scenery.nightLevel, biome.id === 'volcano' ? 0.35 : 0);
     if (darkness <= 0.01) {
+      this.lighting.draw(width, SCENE_HEIGHT, 0, []);
       return;
     }
     const lights: Light[] = [];
@@ -511,7 +516,7 @@ export class App {
       }
     }
     lights.push(...this.scenery.lights());
-    this.lighting.draw(ctx, width, SCENE_HEIGHT, darkness, lights);
+    this.lighting.draw(width, SCENE_HEIGHT, darkness, lights);
   }
 
   private updateEffects(deltaTime: number) {

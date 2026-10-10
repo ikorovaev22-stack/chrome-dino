@@ -74,6 +74,29 @@ body {
   z-index: 0;
 }
 
+/* Night lighting, drawn in game pixels and stretched by the browser. */
+.light {
+  height: 100%;
+  pointer-events: none;
+  width: 100%;
+  /* Same level as #fx; the page order puts them under it. */
+  z-index: 3;
+}
+
+.light[hidden] {
+  display: none;
+}
+
+#glow {
+  mix-blend-mode: screen;
+}
+
+@supports (mix-blend-mode: plus-lighter) {
+  #glow {
+    mix-blend-mode: plus-lighter;
+  }
+}
+
 #fx {
   z-index: 3;
 }

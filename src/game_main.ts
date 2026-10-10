@@ -119,6 +119,8 @@ async function main() {
     extras,
     scene: $<HTMLCanvasElement>('scene'),
     fx: $<HTMLCanvasElement>('fx'),
+    shade: $<HTMLCanvasElement>('shade'),
+    glow: $<HTMLCanvasElement>('glow'),
     viewport: $('viewport'),
     pauseButton: $<HTMLButtonElement>('pause'),
     sheet: original,
