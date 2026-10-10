@@ -17,6 +17,11 @@ concurrency:
 jobs:
   build:
     runs-on: ubuntu-latest
+    outputs:
+      # A name per attempt: "Re-run all jobs" uploads a second artifact, and
+      # deploy-pages refuses to choose between two with the same name. Passing
+      # it as an output keeps "Re-run failed jobs" working too.
+      artifact: github-pages-${{ github.run_attempt }}
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-node@v5
@@ -28,6 +33,7 @@ jobs:
       - uses: actions/upload-pages-artifact@v4
         with:
           path: dist
+          name: github-pages-${{ github.run_attempt }}
 
   deploy:
     needs: build
@@ -38,3 +44,5 @@ jobs:
     steps:
       - id: deployment
         uses: actions/deploy-pages@v5
+        with:
+          artifact_name: ${{ needs.build.outputs.artifact }}
