@@ -120,6 +120,16 @@ class Geyser extends Obstacle {
     super.update(deltaTime, speed);
   }
 
+  /** The glow of the vent and the lava column, for the night lighting. */
+  light() {
+    return {
+      x: this.xPos + 10,
+      y: GROUND - 7 - this.column / 2,
+      radius: 18 + this.column * 0.7,
+      color: '#ff7a2a',
+    };
+  }
+
   protected override draw() {
     const ctx = this.canvasCtx;
     const ventY = GROUND - 7;
@@ -140,6 +150,11 @@ class Geyser extends Obstacle {
       }
     }
   }
+}
+
+/** Light given off by an obstacle at night (the lava geysers), if any. */
+export function obstacleLight(obstacle: Obstacle) {
+  return obstacle instanceof Geyser ? obstacle.light() : null;
 }
 
 let biome: Biome = BIOMES[0]!;

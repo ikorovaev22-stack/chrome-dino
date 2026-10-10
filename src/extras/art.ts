@@ -122,6 +122,19 @@ const ICONS = {
     '.#sssssss#.',
     '###########',
   ],
+  heart: [
+    '.###...###.',
+    '#LLL#.##LD#',
+    '#LL#######D',
+    '#L########D',
+    '##########D',
+    '.########D.',
+    '..######D..',
+    '...####D...',
+    '....##D....',
+    '.....#.....',
+    '...........',
+  ],
 };
 
 export type PowerUpKind = keyof typeof ICONS;
@@ -135,7 +148,20 @@ export const POWER_UP_COLORS: Record<PowerUpKind, {
   magnet: {main: '#e53b3b', light: '#ff8a8a', dark: '#9a1f1f', extra: '#dfe5ec'},
   star: {main: '#f5b400', light: '#ffe680', dark: '#b07f00'},
   slowMotion: {main: '#7b4fd0', light: '#b89cf0', dark: '#4e2d94', extra: '#ffcf70'},
+  heart: {main: '#e5484d', light: '#ff9a9a', dark: '#a8262b'},
 };
+
+/** Hearts of the health bar. */
+const HUD_HEART = [
+  '.##...##.',
+  '#LL#.#L##',
+  '#L######D',
+  '########D',
+  '.######D.',
+  '..####D..',
+  '...##D...',
+  '....#....',
+];
 
 /** Frame around a power-up lying on the track; '#' takes the power-up colour. */
 const BOX = [
@@ -342,6 +368,8 @@ export interface Sprites {
   stump: PixelSprite;
   snowman: PixelSprite;
   vent: PixelSprite;
+  heartFull: PixelSprite;
+  heartEmpty: PixelSprite;
 }
 
 let sprites: Sprites|null = null;
@@ -391,6 +419,14 @@ export function getSprites(): Sprites {
       snowman: createSprite(
           SNOWMAN, {palette: SNOWMAN_PALETTE, outline: '#5f7fa8'}),
       vent: createSprite(VENT, {palette: VENT_PALETTE, outline: '#120c0f'}),
+      heartFull: createSprite(HUD_HEART, {
+        palette: {'#': '#e5484d', 'L': '#ff9a9a', 'D': '#b3262c'},
+        outline: '#2a0f12',
+      }),
+      heartEmpty: createSprite(HUD_HEART, {
+        palette: {'#': '#3a2f38', 'L': '#4a3d47', 'D': '#2d242b'},
+        outline: '#141015',
+      }),
     };
   }
   return sprites;

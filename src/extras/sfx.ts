@@ -64,9 +64,35 @@ export class Sfx {
     source.start();
   }
 
-  coin() {
-    this.tone(988, 0, 0.06);
-    this.tone(1319, 0.06, 0.12);
+  /** Higher pitched as the combo multiplier grows. */
+  coin(multiplier = 1) {
+    const pitch = Math.pow(1.06, multiplier - 1);
+    this.tone(988 * pitch, 0, 0.06);
+    this.tone(1319 * pitch, 0.06, 0.12);
+  }
+
+  hurt() {
+    this.noise(0.12, 0.06);
+    this.tone(300, 0, 0.18, 'square', 0.05, 110);
+  }
+
+  heal() {
+    [659, 880, 1175].forEach(
+        (f, i) => this.tone(f, i * 0.06, 0.1, 'triangle', 0.07));
+  }
+
+  /** Short tick for moving through menus. */
+  select() {
+    this.tone(660, 0, 0.04, 'square', 0.02);
+  }
+
+  confirm() {
+    this.tone(784, 0, 0.05, 'square', 0.03);
+    this.tone(1175, 0.05, 0.08, 'square', 0.03);
+  }
+
+  deny() {
+    this.tone(220, 0, 0.12, 'square', 0.03, 180);
   }
 
   powerUp() {

@@ -1,17 +1,18 @@
 /**
- * Dino colours. New ones unlock as coins pile up over all runs.
+ * Dino colours, bought with coins. Coins add up over all runs.
  */
 
 import {readNumber, writeNumber} from '../host.js';
 
 import type {SpritePalette} from './biomes.js';
+import type {Upgrade} from './upgrades.js';
+import {nextPrice, setUpgradeLevel, upgradeLevel} from './upgrades.js';
 
 export type SkinId = 'green'|'classic'|'coral'|'ice'|'violet'|'gold';
 
 export interface Skin {
   id: SkinId;
   name: string;
-  // Coins collected over all runs needed to unlock it.
   price: number;
   palette: SpritePalette;
 }
@@ -42,7 +43,7 @@ export const SKINS: Skin[] = [
   {
     id: 'coral',
     name: 'Огненный',
-    price: 100,
+    price: 150,
     palette: {
       base: '#ff7a4f',
       light: '#ffa77a',
@@ -53,7 +54,7 @@ export const SKINS: Skin[] = [
   {
     id: 'ice',
     name: 'Ледяной',
-    price: 250,
+    price: 300,
     palette: {
       base: '#4cc9e8',
       light: '#8ee6f7',
@@ -87,6 +88,7 @@ export const SKINS: Skin[] = [
 
 const BANK_KEY = 'chrome-dino:coins-total';
 const SKIN_KEY = 'chrome-dino:skin';
+const OWNED_KEY = 'chrome-dino:skins-owned';
 
 export function getCoinBank(): number {
   return readNumber(BANK_KEY);
@@ -98,8 +100,53 @@ export function addToCoinBank(coins: number): number {
   return total;
 }
 
-export function isUnlocked(skin: Skin): boolean {
-  return getCoinBank() >= skin.price;
+function spend(price: number): boolean {
+  const bank = getCoinBank();
+  if (bank < price) {
+    return false;
+  }
+  writeNumber(BANK_KEY, bank - price);
+  return true;
+}
+
+function readOwned(): Set<string> {
+  try {
+    return new Set(JSON.parse(localStorage.getItem(OWNED_KEY) ?? '[]'));
+  } catch {
+    return new Set();
+  }
+}
+
+export function isOwned(skin: Skin): boolean {
+  return skin.price === 0 || readOwned().has(skin.id);
+}
+
+/** Buys a skin; returns false when there aren't enough coins. */
+export function buySkin(skin: Skin): boolean {
+  if (isOwned(skin)) {
+    return true;
+  }
+  if (!spend(skin.price)) {
+    return false;
+  }
+  const owned = readOwned();
+  owned.add(skin.id);
+  try {
+    localStorage.setItem(OWNED_KEY, JSON.stringify([...owned]));
+  } catch {
+    // Kept for this visit only.
+  }
+  return true;
+}
+
+/** Buys the next level of an upgrade; false when it's unaffordable or maxed. */
+export function buyUpgrade(upgrade: Upgrade): boolean {
+  const price = nextPrice(upgrade);
+  if (price === null || !spend(price)) {
+    return false;
+  }
+  setUpgradeLevel(upgrade.id, upgradeLevel(upgrade.id) + 1);
+  return true;
 }
 
 export function getSelectedSkin(): Skin {
@@ -110,7 +157,7 @@ export function getSelectedSkin(): Skin {
     // Fall back to the default skin.
   }
   const skin = SKINS.find(s => s.id === id);
-  return skin && isUnlocked(skin) ? skin : SKINS[0]!;
+  return skin && isOwned(skin) ? skin : SKINS[0]!;
 }
 
 export function saveSelectedSkin(skin: Skin) {

@@ -24,7 +24,7 @@ import {Status as TrexStatus, Trex} from './trex.js';
 import {getTimeStamp} from './utils.js';
 
 // chrome-dino extras.
-import {Extras} from '../extras/extras.js';
+import {EXTRA_SPEED_CONFIG, Extras} from '../extras/extras.js';
 import {getCanvasPixelRatio, isExtrasEnabled} from '../extras/mode.js';
 import {createExtraObstacle} from '../extras/obstacles.js';
 
@@ -598,15 +598,13 @@ export class Runner implements ImageSpriteProvider, GameStateProvider,
         dimensions: this.dimensions,
         tRex: this.tRex,
         horizon: this.horizon,
-        imageSprite: this.getOrigImageSprite(),
-        textSpritePos: this.spriteDef.textSprite,
         setImageSprite: (sprite: HTMLImageElement) => {
           this.imageSprite = sprite;
         },
       });
       this.horizon.setObstacleFactory(createExtraObstacle);
-      // Redraw the first frame on top of the background.
-      this.adjustDimensions();
+      // A gentler speed curve than Chrome's.
+      Object.assign(this.config, EXTRA_SPEED_CONFIG);
     }
 
     this.outerContainerEl.appendChild(this.containerEl);
@@ -682,8 +680,6 @@ export class Runner implements ImageSpriteProvider, GameStateProvider,
 
       this.distanceMeter.calcXpos(this.dimensions.width);
       this.clearCanvas();
-      // chrome-dino extras: sky, hills and ground.
-      this.extras?.drawBackground(0, this.currentSpeed, this.inverted);
       this.horizon.update(0, 0, true, /*showNightMode = */ false);
       this.tRex.update(0);
 
@@ -698,7 +694,8 @@ export class Runner implements ImageSpriteProvider, GameStateProvider,
       }
 
       // Game over panel.
-      if (this.crashed && this.gameOverPanel) {
+      // chrome-dino extras: the game page draws its own results screen.
+      if (this.crashed && this.gameOverPanel && !this.extras) {
         this.gameOverPanel.updateDimensions(this.dimensions.width);
         this.gameOverPanel.draw(this.altGameModeActive, this.tRex);
       }
@@ -849,13 +846,6 @@ export class Runner implements ImageSpriteProvider, GameStateProvider,
 
       this.clearCanvas();
 
-      // chrome-dino extras: sky, hills and ground.
-      if (this.extras) {
-        const moving = this.activated && !this.playingIntro && !this.crashed;
-        this.extras.drawBackground(
-            moving ? deltaTime : 0, this.currentSpeed, this.inverted);
-      }
-
       // Additional fade in - Prevents jump when switching sprites
       if (this.altGameModeActive &&
           this.fadeInTimer <= this.config.fadeDuration) {
@@ -901,11 +891,15 @@ export class Runner implements ImageSpriteProvider, GameStateProvider,
       let collision = hasObstacles && firstObstacle &&
           this.checkForCollision(firstObstacle, this.tRex);
 
-      // chrome-dino extras: the shield and the star absorb hits.
-      if (collision && firstObstacle &&
-          this.extras?.absorbCollision(firstObstacle)) {
-        this.horizon.removeFirstObstacle();
-        collision = false;
+      // chrome-dino extras: hearts, the shield and the star absorb hits.
+      if (collision && firstObstacle && this.extras) {
+        const outcome = this.extras.absorbCollision(firstObstacle);
+        if (outcome === 'smash') {
+          this.horizon.removeFirstObstacle();
+        }
+        if (outcome) {
+          collision = false;
+        }
       }
 
       // For a11y, audio cues.
@@ -983,16 +977,23 @@ export class Runner implements ImageSpriteProvider, GameStateProvider,
 
     if (this.playing ||
         (!this.activated && this.tRex.blinkCount < this.config.maxBlinkCount)) {
-      // chrome-dino extras: the dino flickers while invulnerable.
-      if (this.playing && this.extras) {
-        this.canvasCtx!.globalAlpha = this.extras.trexAlpha();
+      // chrome-dino extras: squash and stretch, flicker while invulnerable.
+      const extras = this.playing ? this.extras : null;
+      if (extras) {
+        this.canvasCtx!.save();
+        this.canvasCtx!.globalAlpha = extras.trexAlpha();
+        extras.transformTrex(this.canvasCtx!);
       }
       this.tRex.update(deltaTime);
-      if (this.playing && this.extras) {
-        this.extras.drawOverlay();
+      if (extras) {
+        this.canvasCtx!.restore();
+        extras.drawOverlay();
       }
       this.scheduleNextUpdate();
     }
+
+    // chrome-dino extras: the page draws its layers after the game's frame.
+    this.extras?.afterFrame();
   }
 
   handleEvent(e: Event) {
@@ -1452,10 +1453,13 @@ export class Runner implements ImageSpriteProvider, GameStateProvider,
     }
 
     assert(this.gameOverPanel);
-    // chrome-dino extras: keep the counters and weather on the last frame.
-    this.extras?.drawOverlay();
-    this.extras?.onGameOver();
-    this.gameOverPanel.draw(this.altGameModeActive, this.tRex);
+    // chrome-dino extras: the game page shows its own results screen.
+    if (this.extras) {
+      this.extras.drawOverlay();
+      this.extras.onGameOver();
+    } else {
+      this.gameOverPanel.draw(this.altGameModeActive, this.tRex);
+    }
 
     // Update the high score.
     if (this.getScoreDistance() > this.highestScore) {
@@ -1516,7 +1520,6 @@ export class Runner implements ImageSpriteProvider, GameStateProvider,
   private restart() {
     if (!this.raqId) {
       assert(this.containerEl);
-      assert(this.gameOverPanel);
       assert(this.tRex);
       assert(this.horizon);
       assert(this.distanceMeter);
@@ -1538,12 +1541,79 @@ export class Runner implements ImageSpriteProvider, GameStateProvider,
       this.playSound(this.soundFx.BUTTON_PRESS);
       this.invert(true);
       this.update();
-      this.gameOverPanel.reset();
+      // chrome-dino extras: a run left from the pause menu has no panel.
+      this.gameOverPanel?.reset();
       if (this.hasAudioCuesInternal) {
         this.getGeneratedSoundFx().background();
       }
       this.containerEl.setAttribute('title', getA11yString(A11yStrings.JUMP));
       this.announcePhrase(getA11yString(A11yStrings.STARTED));
+    }
+  }
+
+  /**
+   * chrome-dino extras: controls for the game page's menus.
+   */
+  getExtras(): Extras|null {
+    return this.extras;
+  }
+
+  getRunState(): 'idle'|'running'|'paused'|'crashed' {
+    if (this.crashed) {
+      return 'crashed';
+    }
+    if (!this.activated && !this.playing && !this.paused) {
+      return 'idle';
+    }
+    return this.paused ? 'paused' : 'running';
+  }
+
+  /** Starts the first run, or a new one after a crash or from the menu. */
+  startRun() {
+    assert(this.tRex);
+    if (this.getRunState() === 'idle') {
+      this.loadSounds();
+      this.setPlayStatus(true);
+      this.update();
+      if (window.errorPageController) {
+        window.errorPageController.trackEasterEgg();
+      }
+      this.playSound(this.soundFx.BUTTON_PRESS);
+      this.tRex.startJump(this.currentSpeed);
+      return;
+    }
+    if (!this.crashed) {
+      // Leaving a run from the pause menu ends it.
+      this.extras?.onRunAbandoned();
+    }
+    cancelAnimationFrame(this.raqId);
+    this.raqId = 0;
+    this.restart();
+  }
+
+  isNight(): boolean {
+    return this.isDarkMode !== this.inverted;
+  }
+
+  getSpeed(): number {
+    return this.currentSpeed;
+  }
+
+  getObstacles(): Obstacle[] {
+    return this.horizon?.obstacles ?? [];
+  }
+
+  pauseRun() {
+    if (this.playing && !this.crashed) {
+      this.stop();
+    }
+  }
+
+  resumeRun() {
+    assert(this.tRex);
+    if (this.paused && !this.crashed) {
+      this.tRex.reset();
+      this.play();
     }
   }
 
@@ -1609,7 +1679,9 @@ export class Runner implements ImageSpriteProvider, GameStateProvider,
     if (document.hidden || e.type === 'blur' ||
         document.visibilityState !== 'visible') {
       this.stop();
-    } else if (!this.crashed) {
+      // chrome-dino extras: the game page opens its pause menu instead.
+      this.extras?.onPause();
+    } else if (!this.crashed && !this.extras) {
       assert(this.tRex);
       this.tRex.reset();
       this.play();

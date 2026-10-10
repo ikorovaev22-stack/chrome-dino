@@ -17,19 +17,7 @@ function hex(color: string): RGB {
   return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
 }
 
-const TEXT = hex('#fff4dc');
-const TEXT_SHADOW = hex('#3d2b1f');
-const CLOUD_LINE = hex('#c5d6ee');
-const CLOUD_FILL = hex('#ffffff');
-const MOON = hex('#fff1b0');
-const STAR = hex('#fff7c2');
 const WHITE = hex('#ffffff');
-const RESTART: SpritePalette = {
-  base: '#ffb02e',
-  light: '#ffd27a',
-  dark: '#d98a12',
-  outline: '#5a3508',
-};
 const PTERODACTYL: SpritePalette = {
   base: '#b0603a',
   light: '#d88a5a',
@@ -86,19 +74,6 @@ class Sheet {
     this.out[i + 3] = alpha ?? this.src[i + 3]!;
   }
 
-  /** Copies a block of the source sheet (before recolouring). */
-  copy(sx: number, sy: number, dx: number, dy: number, w: number, h: number) {
-    for (let y = 0; y < h; y++) {
-      for (let x = 0; x < w; x++) {
-        const from = this.index(sx + x, sy + y);
-        const to = this.index(dx + x, dy + y);
-        for (let c = 0; c < 4; c++) {
-          this.src[to + c] = this.src[from + c]!;
-          this.out[to + c] = this.src[from + c]!;
-        }
-      }
-    }
-  }
 }
 
 /**
@@ -164,57 +139,12 @@ function paintSprite(
   }
 }
 
-/** One flat colour for every visible pixel (moon, stars, horizon line). */
-function paintFlat(sheet: Sheet, rect: Rect, color: RGB) {
+/** Empties a region of the sheet. */
+function clear(sheet: Sheet, rect: Rect) {
   for (let y = rect.y0; y < rect.y1; y++) {
     for (let x = rect.x0; x < rect.x1; x++) {
       if (sheet.alpha(x, y) > 0) {
-        sheet.set(x, y, color);
-      }
-    }
-  }
-}
-
-/** Clouds: soft outline, filled inside. */
-function paintClouds(sheet: Sheet, rect: Rect, fill: RGB, line: RGB) {
-  const opaque = (x: number, y: number) =>
-      x >= rect.x0 && x < rect.x1 && y >= rect.y0 && y < rect.y1 &&
-      sheet.alpha(x, y) > 0;
-  const towards = (x: number, y: number, dx: number, dy: number) => {
-    for (let nx = x + dx, ny = y + dy;
-         nx >= rect.x0 && nx < rect.x1 && ny >= rect.y0 && ny < rect.y1;
-         nx += dx, ny += dy) {
-      if (opaque(nx, ny)) {
-        return true;
-      }
-    }
-    return false;
-  };
-  for (let y = rect.y0; y < rect.y1; y++) {
-    for (let x = rect.x0; x < rect.x1; x++) {
-      if (opaque(x, y)) {
-        sheet.set(x, y, line, 255);
-      } else if (
-          towards(x, y, -1, 0) && towards(x, y, 1, 0) &&
-          towards(x, y, 0, -1) && towards(x, y, 0, 1)) {
-        sheet.set(x, y, fill, 255);
-      }
-    }
-  }
-}
-
-/** Score digits and GAME OVER: light text with a drop shadow per cell. */
-function paintText(sheet: Sheet, rect: Rect, cellWidth: number, step: number) {
-  for (let y = rect.y0; y < rect.y1; y++) {
-    for (let x = rect.x0; x < rect.x1; x++) {
-      const cellStart = rect.x0 + Math.floor((x - rect.x0) / cellWidth) * cellWidth;
-      if (sheet.isBody(x, y)) {
-        sheet.set(x, y, TEXT);
-      } else if (
-          (x - step >= cellStart && sheet.isBody(x - step, y - step)) ||
-          (x - step >= cellStart && sheet.isBody(x - step, y)) ||
-          sheet.isBody(x, y - step)) {
-        sheet.set(x, y, TEXT_SHADOW, 255);
+        sheet.set(x, y, [0, 0, 0], 0);
       }
     }
   }
@@ -248,7 +178,6 @@ function regions(scale: 1|2, width: number) {
     tRex: col(def.tRex.x, width),
     horizon: {x0: 0, x1: width, y0: top, y1: top + line.height * scale},
     restart: {x0: 0, x1: width, y0: def.restart.y, y1: def.restart.y + 32 * scale},
-    restartX: def.restart.x,
   };
 }
 
@@ -266,28 +195,17 @@ export async function buildSheet(
   const sheet = new Sheet(ctx.getImageData(0, 0, canvas.width, canvas.height));
   const r = regions(scale, canvas.width);
 
-  // The restart button starts as the Chrome logo and turns into an arrow;
-  // show the arrow (last frame) throughout.
-  const frame = 36 * scale;
-  for (let i = 0; i < 7; i++) {
-    sheet.copy(
-        r.restartX + frame * 7, r.restart.y0, r.restartX + frame * i,
-        r.restart.y0, frame, r.restart.y1 - r.restart.y0);
-  }
-
   paintSprite(sheet, r.leftDino, skin.palette, scale);
   paintSprite(sheet, r.tRex, skin.palette, scale);
   paintSprite(sheet, r.pterodactyl, PTERODACTYL, scale);
   paintSprite(sheet, r.cacti, biome.cactus, scale);
-  paintSprite(sheet, r.restart, RESTART, scale);
-  paintClouds(
-      sheet, r.cloud, biome.clouds ? hex(biome.clouds.fill) : CLOUD_FILL,
-      biome.clouds ? hex(biome.clouds.line) : CLOUD_LINE);
-  paintFlat(sheet, r.moon, MOON);
-  paintFlat(sheet, r.star, STAR);
-  paintFlat(sheet, r.horizon, hex(biome.line));
-  paintText(sheet, r.digits, 10 * scale, scale);
-  paintText(sheet, r.gameOver, r.gameOver.x1 - r.gameOver.x0, scale);
+  // The game page draws its own sky, ground, score and menus: Chrome's
+  // clouds, moon, stars, horizon line, digits and restart button stay empty.
+  for (const rect of [
+         r.cloud, r.moon, r.star, r.digits, r.gameOver, r.horizon, r.restart,
+       ]) {
+    clear(sheet, rect);
+  }
 
   ctx.putImageData(
       new ImageData(sheet.out, sheet.width, sheet.height), 0, 0);

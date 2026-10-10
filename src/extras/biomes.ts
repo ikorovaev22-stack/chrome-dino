@@ -45,6 +45,10 @@ export interface Biome {
   line: string;
   // Fill and outline of the clouds (white by default).
   clouds?: {fill: string, line: string};
+  // Layers under the ground: soil tones, stones, and a detail colour (roots,
+  // gems, lava veins).
+  soil: {base: string, dark: string, light: string, stone: string,
+         detail: string, surface: string};
   cactus: SpritePalette;
   rock: SpritePalette;
   dust: string;
@@ -67,6 +71,14 @@ export const BIOMES: Biome[] = [
     ground: '#f0cf91',
     groundDark: '#d9ad66',
     line: '#9a6a3a',
+    soil: {
+      base: '#d9ad66',
+      dark: '#c4904e',
+      light: '#e6c27f',
+      stone: '#b0824c',
+      detail: '#f6e3b4',
+      surface: '#f7dca4',
+    },
     cactus: {
       base: '#4fa34a',
       light: '#7ccc63',
@@ -82,7 +94,7 @@ export const BIOMES: Biome[] = [
     dust: '#e2bf82',
     weather: ['clear', 'sand'],
     ambient: 'none',
-    extraChance: 0.25,
+    extraChance: 0.15,
     extras: [
       {kind: 'rock', weight: 1},
       {kind: 'tumbleweed', weight: 1, minSpeed: 7},
@@ -99,6 +111,14 @@ export const BIOMES: Biome[] = [
     ground: '#dd8e60',
     groundDark: '#c0704a',
     line: '#7a3426',
+    soil: {
+      base: '#bd6c48',
+      dark: '#9f5537',
+      light: '#cf8460',
+      stone: '#8a4632',
+      detail: '#e8b089',
+      surface: '#e9a074',
+    },
     clouds: {fill: '#fff0e6', line: '#f0b49a'},
     cactus: {
       base: '#6f9a45',
@@ -115,7 +135,7 @@ export const BIOMES: Biome[] = [
     dust: '#e9a77d',
     weather: ['clear', 'sand'],
     ambient: 'birds',
-    extraChance: 0.3,
+    extraChance: 0.2,
     extras: [
       {kind: 'rock', weight: 2},
       {kind: 'tumbleweed', weight: 1, minSpeed: 7},
@@ -138,6 +158,14 @@ export const BIOMES: Biome[] = [
     ground: '#78bf55',
     groundDark: '#5a9d3e',
     line: '#3e6b2a',
+    soil: {
+      base: '#7a5232',
+      dark: '#5f3f26',
+      light: '#8f6440',
+      stone: '#8a8f86',
+      detail: '#a5784c',
+      surface: '#8fd16a',
+    },
     cactus: {
       base: '#2f8f4f',
       light: '#52b86b',
@@ -154,7 +182,7 @@ export const BIOMES: Biome[] = [
     dust: '#8fcf6a',
     weather: ['clear', 'rain', 'leaves'],
     ambient: 'birds',
-    extraChance: 0.45,
+    extraChance: 0.25,
     extras: [
       {kind: 'log', weight: 2},
       {kind: 'stump', weight: 2},
@@ -184,6 +212,14 @@ export const BIOMES: Biome[] = [
     ground: '#f4f8ff',
     groundDark: '#d4e2f5',
     line: '#7d9cc4',
+    soil: {
+      base: '#7f98b8',
+      dark: '#667fa1',
+      light: '#98b1cf',
+      stone: '#c9dcef',
+      detail: '#e4f1ff',
+      surface: '#ffffff',
+    },
     cactus: {
       base: '#4f9a9c',
       light: '#7cc3c2',
@@ -200,7 +236,7 @@ export const BIOMES: Biome[] = [
     dust: '#ffffff',
     weather: ['snow', 'blizzard'],
     ambient: 'none',
-    extraChance: 0.5,
+    extraChance: 0.3,
     extras: [
       {kind: 'snowman', weight: 2},
       {kind: 'snowball', weight: 2, minSpeed: 7},
@@ -224,6 +260,14 @@ export const BIOMES: Biome[] = [
     ground: '#3b2a2e',
     groundDark: '#2a1d21',
     line: '#ff6a2b',
+    soil: {
+      base: '#2e2226',
+      dark: '#221a1d',
+      light: '#3a2c30',
+      stone: '#4a3a40',
+      detail: '#ff6a1f',
+      surface: '#4a3438',
+    },
     clouds: {fill: '#5e4656', line: '#3e2a38'},
     cactus: {
       base: '#3a2a2e',
@@ -240,7 +284,7 @@ export const BIOMES: Biome[] = [
     dust: '#6b4a4a',
     weather: ['embers'],
     ambient: 'smoke',
-    extraChance: 0.45,
+    extraChance: 0.3,
     extras: [
       {kind: 'geyser', weight: 3},
       {kind: 'rock', weight: 1},
@@ -252,8 +296,8 @@ export const BIOMES: Biome[] = [
  * Score at which each level starts. After the last one, a new level comes
  * every LEVEL_STEP points and the worlds repeat.
  */
-const LEVEL_STARTS = [0, 400, 900, 1500, 2200];
-const LEVEL_STEP = 800;
+const LEVEL_STARTS = [0, 500, 1100, 1800, 2600];
+const LEVEL_STEP = 900;
 
 export function levelForScore(score: number): number {
   let level = 0;
