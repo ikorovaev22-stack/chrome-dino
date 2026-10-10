@@ -1,18 +1,20 @@
 /**
  * Tiny pixel art toolkit. Bitmaps are written as rows of palette characters
- * and drawn in the colours of the Chrome sprite sheet, so the new graphics
- * match the original ones (and invert the same way in night and dark mode).
+ * ('.' is transparent) and pre-rendered once to offscreen canvases.
  */
 
-const PALETTE: Record<string, string> = {
-  '#': '#535353',  // Main sprite colour.
-  '+': '#bababa',  // Stars.
-  '-': '#dadada',  // Moon, light fills.
-  'o': '#ffffff',  // Outline / highlights.
+import type {SpritePalette} from './biomes.js';
+
+/** Default colours, matching the Chrome sprite sheet. */
+const DEFAULT_PALETTE: Record<string, string> = {
+  '#': '#535353',
+  '+': '#bababa',
+  '-': '#dadada',
+  'o': '#ffffff',
 };
 
-/** Rendering scale. Sprites stay sharp on high density screens. */
-const SCALE = 2;
+/** Rendering scale. Sprites stay sharp when the canvas is scaled up. */
+const SCALE = 4;
 
 export interface PixelSprite {
   canvas: HTMLCanvasElement;
@@ -21,12 +23,22 @@ export interface PixelSprite {
   height: number;
 }
 
+export interface SpriteOptions {
+  palette?: Record<string, string>;
+  // Colour of the 1px border around the shape, or null for none.
+  outline?: string|null;
+}
+
 /**
- * Renders a bitmap to an offscreen canvas. With `outline`, every empty pixel
- * next to a filled one is painted white, like the 1px border around the
- * original sprites; the sprite then grows by 1px on each side.
+ * Renders a bitmap to an offscreen canvas. With an outline, every empty
+ * pixel next to a filled one gets the outline colour; the sprite then grows
+ * by 1px on each side.
  */
-export function createSprite(rows: string[], outline = true): PixelSprite {
+export function createSprite(
+    rows: string[], options: SpriteOptions = {}): PixelSprite {
+  const palette = {...DEFAULT_PALETTE, ...options.palette};
+  const outline =
+      options.outline === undefined ? palette['o']! : options.outline;
   const pad = outline ? 1 : 0;
   const artWidth = Math.max(...rows.map(row => row.length));
   const width = artWidth + pad * 2;
@@ -38,19 +50,19 @@ export function createSprite(rows: string[], outline = true): PixelSprite {
 
   const filled = (x: number, y: number) => {
     const ch = rows[y]?.[x];
-    return ch !== undefined && ch !== '.';
+    return ch !== undefined && ch !== '.' && ch !== ' ';
   };
 
   for (let y = -pad; y < rows.length + pad; y++) {
     for (let x = -pad; x < artWidth + pad; x++) {
       let color: string|undefined;
       if (filled(x, y)) {
-        color = PALETTE[rows[y]![x]!];
+        color = palette[rows[y]![x]!];
       } else if (
           outline &&
           (filled(x - 1, y) || filled(x + 1, y) || filled(x, y - 1) ||
            filled(x, y + 1))) {
-        color = PALETTE['o'];
+        color = outline;
       }
       if (color) {
         ctx.fillStyle = color;
@@ -59,6 +71,43 @@ export function createSprite(rows: string[], outline = true): PixelSprite {
     }
   }
   return {canvas, width, height};
+}
+
+/**
+ * Adds light and dark edges to a silhouette drawn with '#': 'L' on the top
+ * and left edges, 'D' on the bottom and right ones (and 'C' for a snow cap
+ * on top when asked). Other characters are left as they are.
+ */
+export function shade(rows: string[], cap = false): string[] {
+  const body = (x: number, y: number) => {
+    const ch = rows[y]?.[x];
+    return ch !== undefined && ch !== '.' && ch !== ' ';
+  };
+  return rows.map((row, y) => [...row].map((ch, x) => {
+    if (ch !== '#') {
+      return ch;
+    }
+    if (cap && (!body(x, y - 1) || !body(x, y - 2))) {
+      return 'C';
+    }
+    if (!body(x, y - 1) || !body(x - 1, y)) {
+      return 'L';
+    }
+    if (!body(x, y + 1) || !body(x + 1, y)) {
+      return 'D';
+    }
+    return '#';
+  }).join(''));
+}
+
+/** Palette for shaded art from a sprite palette. */
+export function paletteFor(colors: SpritePalette): Record<string, string> {
+  return {
+    '#': colors.base,
+    'L': colors.light,
+    'D': colors.dark,
+    'C': colors.cap ?? colors.light,
+  };
 }
 
 export function drawSprite(
@@ -73,7 +122,8 @@ export function drawSprite(
  * easier to describe as geometry (and to rotate) than to draw by hand.
  */
 export function rasterizeLines(
-    size: number, lines: Array<[number, number, number, number]>): string[] {
+    size: number, lines: Array<[number, number, number, number]>,
+    char = '#'): string[] {
   const grid: string[][] =
       Array.from({length: size}, () => Array(size).fill('.'));
   for (const [x0, y0, x1, y1] of lines) {
@@ -82,7 +132,7 @@ export function rasterizeLines(
       const x = Math.round(x0 + (x1 - x0) * i / steps);
       const y = Math.round(y0 + (y1 - y0) * i / steps);
       if (x >= 0 && y >= 0 && x < size && y < size) {
-        grid[y]![x] = '#';
+        grid[y]![x] = char;
       }
     }
   }

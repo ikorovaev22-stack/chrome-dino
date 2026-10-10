@@ -41,4 +41,13 @@ export default defineConfig({
     ],
   },
   plugins: [inlineAudio()],
+  build: {
+    rollupOptions: {
+      // The coloured game, and the copy of Chrome's offline page.
+      input: {
+        main: `${root}index.html`,
+        classic: `${root}classic.html`,
+      },
+    },
+  },
 });

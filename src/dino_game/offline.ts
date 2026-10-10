@@ -25,7 +25,7 @@ import {getTimeStamp} from './utils.js';
 
 // chrome-dino extras.
 import {Extras} from '../extras/extras.js';
-import {EXTRAS_ENABLED} from '../extras/mode.js';
+import {getCanvasPixelRatio, isExtrasEnabled} from '../extras/mode.js';
 import {createExtraObstacle} from '../extras/obstacles.js';
 
 enum A11yStrings {
@@ -592,7 +592,7 @@ export class Runner implements ImageSpriteProvider, GameStateProvider,
         this.canvas, this.spriteDef.tRex, /* resourceProvider= */ this);
 
     // chrome-dino extras.
-    if (EXTRAS_ENABLED) {
+    if (isExtrasEnabled()) {
       this.extras = new Extras({
         canvas: this.canvas,
         dimensions: this.dimensions,
@@ -600,8 +600,13 @@ export class Runner implements ImageSpriteProvider, GameStateProvider,
         horizon: this.horizon,
         imageSprite: this.getOrigImageSprite(),
         textSpritePos: this.spriteDef.textSprite,
+        setImageSprite: (sprite: HTMLImageElement) => {
+          this.imageSprite = sprite;
+        },
       });
       this.horizon.setObstacleFactory(createExtraObstacle);
+      // Redraw the first frame on top of the background.
+      this.adjustDimensions();
     }
 
     this.outerContainerEl.appendChild(this.containerEl);
@@ -614,11 +619,13 @@ export class Runner implements ImageSpriteProvider, GameStateProvider,
         RunnerEvents.RESIZE, this.debounceResize.bind(this));
 
     // Handle dark mode
+    // chrome-dino extras: the coloured game has its own day and night.
     const darkModeMediaQuery =
         window.matchMedia('(prefers-color-scheme: dark)');
-    this.isDarkMode = darkModeMediaQuery && darkModeMediaQuery.matches;
+    this.isDarkMode =
+        !this.extras && darkModeMediaQuery && darkModeMediaQuery.matches;
     darkModeMediaQuery.addListener((e) => {
-      this.isDarkMode = e.matches;
+      this.isDarkMode = !this.extras && e.matches;
     });
   }
 
@@ -675,6 +682,8 @@ export class Runner implements ImageSpriteProvider, GameStateProvider,
 
       this.distanceMeter.calcXpos(this.dimensions.width);
       this.clearCanvas();
+      // chrome-dino extras: sky, hills and ground.
+      this.extras?.drawBackground(0, this.currentSpeed, this.inverted);
       this.horizon.update(0, 0, true, /*showNightMode = */ false);
       this.tRex.update(0);
 
@@ -840,6 +849,13 @@ export class Runner implements ImageSpriteProvider, GameStateProvider,
 
       this.clearCanvas();
 
+      // chrome-dino extras: sky, hills and ground.
+      if (this.extras) {
+        const moving = this.activated && !this.playingIntro && !this.crashed;
+        this.extras.drawBackground(
+            moving ? deltaTime : 0, this.currentSpeed, this.inverted);
+      }
+
       // Additional fade in - Prevents jump when switching sprites
       if (this.altGameModeActive &&
           this.fadeInTimer <= this.config.fadeDuration) {
@@ -875,7 +891,8 @@ export class Runner implements ImageSpriteProvider, GameStateProvider,
       // chrome-dino extras: coins, power-ups and weather.
       if (this.extras && this.activated && !this.playingIntro &&
           !this.crashed) {
-        this.extras.update(deltaTime, this.currentSpeed, hasObstacles);
+        this.extras.update(
+            deltaTime, this.currentSpeed, hasObstacles, this.distanceRan);
       }
 
       const firstObstacle = this.horizon.obstacles[0];
@@ -1437,6 +1454,7 @@ export class Runner implements ImageSpriteProvider, GameStateProvider,
     assert(this.gameOverPanel);
     // chrome-dino extras: keep the counters and weather on the last frame.
     this.extras?.drawOverlay();
+    this.extras?.onGameOver();
     this.gameOverPanel.draw(this.altGameModeActive, this.tRex);
 
     // Update the high score.
@@ -1722,7 +1740,9 @@ function updateCanvasScaling(
   assert(context);
 
   // Query the various pixel ratios
-  const devicePixelRatio = Math.floor(window.devicePixelRatio) || 1;
+  // chrome-dino extras: the game page renders the canvas larger.
+  const devicePixelRatio =
+      getCanvasPixelRatio() ?? (Math.floor(window.devicePixelRatio) || 1);
   /** @suppress {missingProperties} */
   const backingStoreRatio = ('webkitBackingStorePixelRatio' in context) ?
       Math.floor(context.webkitBackingStorePixelRatio as number) :
@@ -1743,6 +1763,10 @@ function updateCanvasScaling(
     // Scale the context to counter the fact that we've manually scaled
     // our canvas element.
     context.scale(ratio, ratio);
+    // chrome-dino extras: keep pixel art sharp when scaled up.
+    if (getCanvasPixelRatio()) {
+      context.imageSmoothingEnabled = false;
+    }
     return true;
   } else if (devicePixelRatio === 1) {
     // Reset the canvas width / height. Fixes scaling bug when the page is

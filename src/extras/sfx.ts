@@ -83,6 +83,11 @@ export class Sfx {
     this.tone(420, 0, 0.09, 'square', 0.03, 900);
   }
 
+  levelUp() {
+    [523, 659, 784, 659, 784, 1047].forEach(
+        (f, i) => this.tone(f, i * 0.09, 0.12, 'square', 0.035));
+  }
+
   smash() {
     this.noise(0.18);
     this.tone(160, 0, 0.12, 'square', 0.04, 60);

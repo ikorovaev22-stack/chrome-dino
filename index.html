@@ -1,21 +1,90 @@
 <!doctype html>
-<!-- Mirrors components/neterror/resources/neterror.html from Chromium. -->
-<html dir="ltr" lang="ru">
+<html lang="ru" dir="ltr">
 <head>
   <meta charset="utf-8">
-  <meta name="color-scheme" content="light dark">
-  <meta name="theme-color" content="#fff">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0,
-                                 maximum-scale=1.0, user-scalable=no">
-  <title>Нет подключения к интернету</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#0f1020">
+  <meta name="description" content="Пиксельный забег динозаврика по пяти мирам: монеты, бонусы, новые препятствия и погода. По мотивам офлайн-игры Chrome.">
+  <title>Дино-забег</title>
   <link rel="icon" type="image/png" href="./src/images/default_100_percent/offline/100-error-offline.png">
-  <script type="module" src="./src/main.ts"></script>
+  <script>
+    // Old links to the Chrome copy: ?classic or #classic.
+    if (/[?&]classic\b/.test(location.search) || location.hash === '#classic') {
+      location.replace('classic.html' + location.search.replace(/[?&]classic\b/, '').replace(/^&/, '?'));
+    }
+  </script>
+  <script type="module" src="./src/game_main.ts"></script>
 </head>
-<body class="neterror" style="font-family: system-ui, sans-serif; font-size: 75%">
-  <div id="content"></div>
-  <div id="offline-resources">
-    <img id="offline-resources-1x" src="./src/images/default_100_percent/offline/100-offline-sprite.png">
-    <img id="offline-resources-2x" src="./src/images/default_200_percent/offline/200-offline-sprite.png">
+<body>
+  <div class="page">
+    <header class="top">
+      <h1 class="logo">Дино<span>-</span>забег</h1>
+      <dl class="stats">
+        <div class="stat">
+          <dt>Рекорд</dt>
+          <dd id="best">00000</dd>
+        </div>
+        <div class="stat">
+          <dt>Монеты</dt>
+          <dd><img class="pixel" id="coin-icon" alt="" width="14" height="14"><span id="bank">0</span></dd>
+        </div>
+      </dl>
+    </header>
+
+    <main>
+      <section class="screen" id="screen" aria-label="Игра">
+        <div id="stage"></div>
+        <p class="start-hint" id="start-hint">
+          <span class="hint-keys">Нажмите <kbd>Пробел</kbd>, чтобы начать</span>
+          <span class="hint-touch">Коснитесь экрана, чтобы начать</span>
+        </p>
+      </section>
+
+      <section class="level" aria-live="polite">
+        <div class="level-name">
+          <span class="level-number" id="level-number">Уровень 1</span>
+          <span class="level-world" id="level-world">Пустыня</span>
+        </div>
+        <div class="level-progress">
+          <div class="bar"><div class="bar-fill" id="level-bar"></div></div>
+          <span class="level-next" id="level-next">Каньон через 400</span>
+        </div>
+        <ul class="controls">
+          <li><kbd>Пробел</kbd><kbd>↑</kbd> прыжок</li>
+          <li><kbd>↓</kbd> пригнуться</li>
+          <li><kbd>Enter</kbd> заново</li>
+        </ul>
+      </section>
+
+      <div class="panels">
+        <section class="panel">
+          <h2>Бонусы</h2>
+          <ul class="powerups" id="powerups"></ul>
+          <p class="note">Монета — +10 очков. Бонусы выпадают в рамке, за некоторыми нужно прыгнуть.</p>
+        </section>
+
+        <section class="panel">
+          <h2>Миры</h2>
+          <ol class="worlds" id="worlds"></ol>
+        </section>
+
+        <section class="panel">
+          <h2>Скины</h2>
+          <ul class="skins" id="skins"></ul>
+          <p class="note" id="skin-note">Монеты копятся от забега к забегу и открывают новые цвета.</p>
+        </section>
+      </div>
+    </main>
+
+    <footer class="bottom">
+      <a href="./classic.html">Классическая версия из Chrome</a>
+      <a href="https://github.com/ikorovaev22-stack/chrome-dino">Исходный код</a>
+      <span>Основа игры — код Chromium, лицензия BSD</span>
+    </footer>
+  </div>
+
+  <div class="icon-offline" hidden></div>
+  <div id="offline-resources" hidden>
     <template id="audio-resources">
       <audio id="offline-sound-press" src="./src/sounds/button-press.mp3"></audio>
       <audio id="offline-sound-hit" src="./src/sounds/hit.mp3"></audio>

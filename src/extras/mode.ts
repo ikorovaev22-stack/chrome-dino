@@ -1,7 +1,29 @@
 /**
- * Whether the extended game (coins, power-ups, new obstacles, weather) is on.
- * `?classic` or `#classic` in the URL gives the original Chrome game.
+ * Settings the page decides before the game starts.
  */
-export const EXTRAS_ENABLED: boolean =
-    !new URLSearchParams(location.search).has('classic') &&
-    location.hash !== '#classic';
+
+let extrasEnabled = true;
+let canvasPixelRatio: number|null = null;
+
+/** The classic page turns the extended game off before the Runner starts. */
+export function disableExtras() {
+  extrasEnabled = false;
+}
+
+/** Coins, power-ups, levels, colours. Off on the classic page. */
+export function isExtrasEnabled(): boolean {
+  return extrasEnabled;
+}
+
+/**
+ * Canvas backing store pixels per game pixel. The game page draws the canvas
+ * bigger than the original 600x150 and sets this so it stays sharp; null
+ * keeps Chrome's own value (the device pixel ratio).
+ */
+export function setCanvasPixelRatio(ratio: number) {
+  canvasPixelRatio = ratio;
+}
+
+export function getCanvasPixelRatio(): number|null {
+  return canvasPixelRatio;
+}

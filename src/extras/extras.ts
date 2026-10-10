@@ -1,7 +1,7 @@
 /**
- * Extended game: coins, power-ups, weather and the on-screen counters.
- * The Runner calls into this class at a few points of its game loop (search
- * for "chrome-dino extras" in dino_game/).
+ * Extended game: worlds and levels, background, coins, power-ups, weather,
+ * effects and the on-screen counters. The Runner calls into this class at a
+ * few points of its game loop (search for "chrome-dino extras" in dino_game/).
  */
 
 import {FPS, IS_HIDPI} from '../dino_game/constants.js';
@@ -13,9 +13,16 @@ import type {Trex} from '../dino_game/trex.js';
 import {getRandomNum} from '../dino_game/utils.js';
 
 import type {PowerUpKind} from './art.js';
-import {getSprites} from './art.js';
+import {getSprites, POWER_UP_COLORS} from './art.js';
+import type {Biome} from './biomes.js';
+import {BIOMES, biomeForLevel, levelForScore, levelStart} from './biomes.js';
+import {emit} from './events.js';
+import {setObstacleBiome} from './obstacles.js';
 import {drawSprite} from './pixel_art.js';
+import {Scenery} from './scenery.js';
 import {Sfx} from './sfx.js';
+import {addToCoinBank} from './skins.js';
+import {onSkinChange, readySheet, sheetFor} from './theme.js';
 import {Weather} from './weather.js';
 
 const COIN_POINTS = 10;
@@ -43,6 +50,11 @@ const INVULNERABLE_AFTER_SHIELD_MS = 1000;
 const MAGNET_RANGE = 230;
 /** Power-ups warn this long before running out by blinking. */
 const EXPIRY_WARNING_MS = 1500;
+
+const BANNER_MS = 2800;
+const PROGRESS_EVERY_MS = 250;
+const RAINBOW = ['#ff4d4d', '#ff9f1a', '#ffe14d', '#4dd96a', '#4da6ff', '#a066ff'];
+const FONT = '"Press Start 2P", monospace';
 
 const COIN_SIZE = {width: 14, height: 14};
 const ITEM_SIZE = 17;
@@ -112,6 +124,8 @@ export interface ExtrasOptions {
   horizon: Horizon;
   imageSprite: HTMLImageElement;
   textSpritePos: SpritePosition;
+  // Swaps the Runner's sprite sheet (coloured per world and skin).
+  setImageSprite: (sprite: HTMLImageElement) => void;
 }
 
 export class Extras {
@@ -121,8 +135,17 @@ export class Extras {
   private horizon: Horizon;
   private imageSprite: HTMLImageElement;
   private textSpritePos: SpritePosition;
+  private setImageSprite: (sprite: HTMLImageElement) => void;
   private sfx = new Sfx();
   private weather: Weather;
+  private scenery: Scenery;
+  private level: number = 0;
+  private biome: Biome = BIOMES[0]!;
+  private banner: {level: number, biome: Biome, age: number}|null = null;
+  private wasJumping: boolean = false;
+  private untilDust: number = 0;
+  private trail: number[] = [];
+  private untilProgress: number = 0;
 
   private time: number = 0;
   private coins: Coin[] = [];
@@ -134,6 +157,8 @@ export class Extras {
   private doubleJumpUsed: boolean = false;
   private coinCount: number = 0;
   private bonusPoints: number = 0;
+  // Score from the distance ran (decides the level).
+  private runPoints: number = 0;
   // Ground distance until the next coin pattern, in pixels.
   private untilCoins: number = 0;
   private nextPattern: 'arc'|'row'|null = null;
@@ -148,8 +173,11 @@ export class Extras {
     this.horizon = options.horizon;
     this.imageSprite = options.imageSprite;
     this.textSpritePos = options.textSpritePos;
+    this.setImageSprite = options.setImageSprite;
     this.weather =
         new Weather(() => this.dimensions.width, this.dimensions.height);
+    this.scenery = new Scenery(() => this.dimensions.width, this.biome);
+    onSkinChange(() => this.applySheet());
     this.reset();
   }
 
@@ -178,17 +206,108 @@ export class Extras {
     this.nextPattern = null;
     this.untilPowerUp = getRandomNum(7000, 11000);
     this.seenObstacles = new WeakSet();
-    this.weather.reset();
+    this.banner = null;
+    this.trail = [];
+    this.level = 0;
+    this.biome = biomeForLevel(0);
+    this.scenery.reset(this.biome);
+    this.weather.reset(this.biome);
+    setObstacleBiome(this.biome);
+    this.applySheet();
+    this.emitLevel();
+    emit('start', null);
+  }
+
+  /** Sky, hills and ground, before anything else is drawn. */
+  drawBackground(deltaTime: number, speed: number, isNight: boolean) {
+    const groundMove = Math.floor(speed * FPS / 1000 * deltaTime);
+    this.scenery.draw(this.ctx, deltaTime, groundMove, isNight);
+  }
+
+  /** Uses the sprite sheet coloured for the current world and skin. */
+  private applySheet() {
+    const biome = this.biome;
+    const sheet = readySheet(biome);
+    if (sheet) {
+      this.setImageSprite(sheet);
+    } else {
+      sheetFor(biome).then(image => {
+        if (this.biome === biome) {
+          this.setImageSprite(image);
+        }
+      });
+    }
+  }
+
+  private emitLevel() {
+    emit('level', {
+      level: this.level,
+      biome: this.biome,
+      start: levelStart(this.level),
+      next: levelStart(this.level + 1),
+    });
+  }
+
+  private changeLevel(level: number) {
+    this.level = level;
+    this.biome = biomeForLevel(level);
+    this.scenery.setBiome(this.biome);
+    this.weather.setBiome(this.biome);
+    setObstacleBiome(this.biome);
+    this.applySheet();
+    this.banner = {level, biome: this.biome, age: 0};
+    this.sfx.levelUp();
+    // A wave of coins to welcome the player to the new world.
+    this.untilCoins = 0;
+    this.nextPattern = 'row';
+    this.emitLevel();
+  }
+
+  /** Called when the run ends. */
+  onGameOver() {
+    const bank = addToCoinBank(this.coinCount);
+    emit('gameover', {
+      score: Math.round(this.bonusPoints + this.runPoints),
+      coins: this.coinCount,
+      bank,
+    });
+    // Shake and flash the screen.
+    const canvas = this.ctx.canvas;
+    canvas.classList.remove('hit');
+    void canvas.offsetWidth;
+    canvas.classList.add('hit');
   }
 
   /**
    * Moves and draws the coins, power-ups and particles (behind the dino).
    * @param spawn Whether new coins and power-ups may appear.
    */
-  update(deltaTime: number, speed: number, spawn: boolean) {
+  update(
+      deltaTime: number, speed: number, spawn: boolean, distanceRan: number) {
     this.time += deltaTime;
     // Same step as the obstacles, so coins hanging over a cactus stay there.
     const groundMove = Math.floor(speed * FPS / 1000 * deltaTime);
+
+    this.runPoints = Math.round(distanceRan * SCORE_COEFFICIENT);
+    const level = levelForScore(this.runPoints);
+    if (level !== this.level) {
+      this.changeLevel(level);
+    }
+    this.untilProgress -= deltaTime;
+    if (this.untilProgress <= 0) {
+      this.untilProgress = PROGRESS_EVERY_MS;
+      emit('progress', {
+        score: this.runPoints + this.bonusPoints,
+        distance: this.runPoints,
+        coins: this.coinCount,
+      });
+    }
+    if (this.banner) {
+      this.banner.age += deltaTime;
+      if (this.banner.age > BANNER_MS) {
+        this.banner = null;
+      }
+    }
 
     this.weather.update(deltaTime, groundMove, speed);
     this.updatePowerUpTimers(deltaTime);
@@ -198,14 +317,74 @@ export class Extras {
     }
     this.updateCoins(deltaTime, groundMove);
     this.updateItems(groundMove);
+    this.updateDust(deltaTime, groundMove);
     this.updateParticles(deltaTime);
     if (!this.tRex.jumping) {
       this.doubleJumpUsed = false;
     }
 
+    this.drawTrail();
     this.drawCoins();
     this.drawItems();
     this.drawParticles();
+  }
+
+  /** Dust kicked up while running, jumping and landing. */
+  private updateDust(deltaTime: number, groundMove: number) {
+    const t = this.tRex;
+    const feetY = 136;
+    const puff = (count: number, spread: number, rise: number) => {
+      for (let i = 0; i < count; i++) {
+        this.particles.push({
+          x: t.xPos + 10 + Math.random() * 20,
+          y: feetY + Math.random() * 3,
+          vx: (Math.random() - 0.5) * spread - groundMove * 0.3,
+          vy: -Math.random() * rise,
+          age: 0,
+          life: 380,
+          size: 2,
+          gravity: 0.04,
+          color: this.biome.dust,
+        });
+      }
+    };
+    if (t.jumping && !this.wasJumping) {
+      puff(4, 2, 0.8);
+    } else if (!t.jumping && this.wasJumping) {
+      puff(9, 4, 1.2);
+    } else if (!t.jumping) {
+      this.untilDust -= deltaTime;
+      if (this.untilDust <= 0) {
+        this.untilDust = 90;
+        puff(1, 0.6, 0.6);
+      }
+    }
+    this.wasJumping = t.jumping;
+
+    // Rainbow trail while the star is on.
+    if (this.active.has('star')) {
+      this.trail.unshift(this.dinoCenter().y);
+      this.trail.length = Math.min(this.trail.length, 14);
+    } else {
+      this.trail = [];
+    }
+  }
+
+  private drawTrail() {
+    if (!this.trail.length) {
+      return;
+    }
+    const box = this.dinoBox();
+    this.ctx.save();
+    this.trail.forEach((y, i) => {
+      this.ctx.globalAlpha = 0.8 * (1 - i / this.trail.length);
+      RAINBOW.forEach((color, band) => {
+        this.ctx.fillStyle = color;
+        this.ctx.fillRect(
+            box.x + 4 - (i + 1) * 4, Math.round(y) - 6 + band * 2, 4, 2);
+      });
+    });
+    this.ctx.restore();
   }
 
   /** Draws everything in front of the dino: effects, weather and counters. */
@@ -214,6 +393,7 @@ export class Extras {
     this.drawPopups();
     this.weather.draw(this.ctx);
     this.drawHud();
+    this.drawBanner();
   }
 
   /** Opacity for drawing the dino; it flickers while it can't be hurt. */
@@ -258,7 +438,7 @@ export class Extras {
         life: 350,
         size: 2,
         gravity: 0,
-        color: '#bababa',
+        color: POWER_UP_COLORS.doubleJump.light,
       });
     }
     return true;
@@ -282,7 +462,7 @@ export class Extras {
         life: 700,
         size: 2 + Math.floor(Math.random() * 2),
         gravity: 0.35,
-        color: '#535353',
+        color: i % 2 ? this.biome.rock.base : this.biome.cactus.base,
       });
     }
     if (withBonus) {
@@ -446,7 +626,9 @@ export class Extras {
         this.coinCount++;
         this.addPoints(COIN_POINTS);
         this.sfx.coin();
-        this.sparkle(coin.x + COIN_SIZE.width / 2, coin.y + COIN_SIZE.height / 2);
+        this.sparkle(
+            coin.x + COIN_SIZE.width / 2, coin.y + COIN_SIZE.height / 2,
+            '#ffe14d');
         return false;
       }
       return coin.x > -COIN_SIZE.width;
@@ -471,10 +653,10 @@ export class Extras {
     this.active.set(kind, DURATION[kind]);
     this.sfx.powerUp();
     const {x, y} = this.dinoCenter();
-    this.sparkle(x, y - 10);
+    this.sparkle(x, y - 10, POWER_UP_COLORS[kind].light);
   }
 
-  private sparkle(x: number, y: number) {
+  private sparkle(x: number, y: number, color: string) {
     for (let i = 0; i < 6; i++) {
       const angle = i / 6 * Math.PI * 2;
       this.particles.push({
@@ -486,7 +668,7 @@ export class Extras {
         life: 250,
         size: 2,
         gravity: 0,
-        color: '#bababa',
+        color,
       });
     }
   }
@@ -523,8 +705,14 @@ export class Extras {
     const sprites = getSprites();
     for (const item of this.items) {
       const bob = Math.round(Math.sin(this.time / 220) * 2);
-      drawSprite(this.ctx, sprites.box, item.x, item.y + bob);
-      drawSprite(this.ctx, sprites.icons[item.kind], item.x + 3, item.y + 3 + bob);
+      // Pulsing glow in the power-up's colour.
+      this.ctx.save();
+      this.ctx.globalAlpha = 0.25 + 0.2 * Math.sin(this.time / 160);
+      this.ctx.fillStyle = POWER_UP_COLORS[item.kind].light;
+      this.ctx.fillRect(item.x - 3, item.y + bob - 3, ITEM_SIZE + 6, ITEM_SIZE + 6);
+      this.ctx.restore();
+      drawSprite(this.ctx, sprites.boxes[item.kind], item.x, item.y + bob);
+      drawSprite(this.ctx, sprites.icons[item.kind], item.x + 2, item.y + 2 + bob);
     }
   }
 
@@ -541,9 +729,16 @@ export class Extras {
   private drawDinoEffects() {
     const {x, y} = this.dinoCenter();
     this.ctx.save();
-    this.ctx.fillStyle = '#535353';
     if (this.active.has('shield')) {
-      // Rotating dotted bubble.
+      // Bubble with a rotating dotted rim.
+      const colors = POWER_UP_COLORS.shield;
+      this.ctx.globalAlpha = 0.18;
+      this.ctx.fillStyle = colors.light;
+      this.ctx.beginPath();
+      this.ctx.ellipse(x, y, 31, 29, 0, 0, Math.PI * 2);
+      this.ctx.fill();
+      this.ctx.globalAlpha = 0.9;
+      this.ctx.fillStyle = colors.main;
       const dots = 20;
       for (let i = 0; i < dots; i++) {
         const angle = i / dots * Math.PI * 2 + this.time / 900;
@@ -587,19 +782,50 @@ export class Extras {
       const blinking = remaining < EXPIRY_WARNING_MS &&
           Math.floor(this.time / 150) % 2 === 0;
       if (!blinking) {
-        drawSprite(this.ctx, sprites.icons[kind], x, 23);
+        drawSprite(this.ctx, sprites.icons[kind], x, 22);
       }
       if (remaining !== Infinity) {
         const fraction = Math.min(1, remaining / DURATION[kind]);
-        this.ctx.fillStyle = '#535353';
-        this.ctx.fillRect(x + 14, 30, Math.ceil(22 * fraction), 3);
-        this.ctx.fillStyle = '#dadada';
-        this.ctx.fillRect(
-            x + 14 + Math.ceil(22 * fraction), 30,
-            22 - Math.ceil(22 * fraction), 3);
+        const filled = Math.ceil(22 * fraction);
+        this.ctx.fillStyle = 'rgba(20, 16, 40, 0.55)';
+        this.ctx.fillRect(x + 14, 28, 24, 5);
+        this.ctx.fillStyle = POWER_UP_COLORS[kind].light;
+        this.ctx.fillRect(x + 15, 29, filled, 3);
       }
-      x += remaining === Infinity ? 16 : 42;
+      x += remaining === Infinity ? 17 : 44;
     }
+  }
+
+  /** "Level 2 · Canyon", sliding in when a new world begins. */
+  private drawBanner() {
+    if (!this.banner) {
+      return;
+    }
+    const {age, level, biome} = this.banner;
+    const ctx = this.ctx;
+    const ease = (t: number) => 1 - Math.pow(1 - Math.min(1, Math.max(0, t)), 3);
+    const y = Math.round(-30 + 72 * ease(age / 450));
+    const alpha = age > BANNER_MS - 500 ? (BANNER_MS - age) / 500 : 1;
+    const title = `УРОВЕНЬ ${level + 1}`;
+    const name = biome.name.toUpperCase();
+    const cx = Math.round(this.dimensions.width / 2);
+
+    ctx.save();
+    ctx.globalAlpha = Math.max(0, alpha);
+    ctx.font = `8px ${FONT}`;
+    const width = Math.max(ctx.measureText(title).width, ctx.measureText(name).width) + 24;
+    ctx.fillStyle = 'rgba(20, 16, 40, 0.78)';
+    ctx.fillRect(cx - width / 2, y - 14, width, 36);
+    ctx.fillStyle = '#ffd23f';
+    ctx.fillRect(cx - width / 2, y - 14, width, 2);
+    ctx.fillRect(cx - width / 2, y + 20, width, 2);
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillStyle = '#ffd23f';
+    ctx.fillText(title, cx, y - 3);
+    ctx.fillStyle = '#ffffff';
+    ctx.fillText(name, cx, y + 10);
+    ctx.restore();
   }
 
   /** Draws digits and '+' in the score font of the sprite sheet. */
