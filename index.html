@@ -1,0 +1,26 @@
+<!doctype html>
+<!-- Mirrors components/neterror/resources/neterror.html from Chromium. -->
+<html dir="ltr" lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="color-scheme" content="light dark">
+  <meta name="theme-color" content="#fff">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0,
+                                 maximum-scale=1.0, user-scalable=no">
+  <title>Нет подключения к интернету</title>
+  <link rel="icon" type="image/png" href="./src/images/default_100_percent/offline/100-error-offline.png">
+  <script type="module" src="./src/main.ts"></script>
+</head>
+<body class="neterror" style="font-family: system-ui, sans-serif; font-size: 75%">
+  <div id="content"></div>
+  <div id="offline-resources">
+    <img id="offline-resources-1x" src="./src/images/default_100_percent/offline/100-offline-sprite.png">
+    <img id="offline-resources-2x" src="./src/images/default_200_percent/offline/200-offline-sprite.png">
+    <template id="audio-resources">
+      <audio id="offline-sound-press" src="./src/sounds/button-press.mp3"></audio>
+      <audio id="offline-sound-hit" src="./src/sounds/hit.mp3"></audio>
+      <audio id="offline-sound-reached" src="./src/sounds/score-reached.mp3"></audio>
+    </template>
+  </div>
+</body>
+</html>
