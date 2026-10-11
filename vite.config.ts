@@ -1,4 +1,5 @@
-import {readFileSync} from 'node:fs';
+import {createHash} from 'node:crypto';
+import {readdirSync, readFileSync} from 'node:fs';
 import {fileURLToPath} from 'node:url';
 
 import {defineConfig, type Plugin} from 'vite';
@@ -27,6 +28,31 @@ function inlineAudio(): Plugin {
   };
 }
 
+/**
+ * Builds sw.js from src/service_worker.js with the list of every file the
+ * game needs, so the home screen app works offline from the first launch.
+ * A new build has new file names, so the list also gives the cache version.
+ */
+function serviceWorker(): Plugin {
+  return {
+    name: 'service-worker',
+    apply: 'build',
+    enforce: 'post',
+    generateBundle(_options, bundle) {
+      const publicFiles = readdirSync(`${root}public`, {recursive: true})
+          .map(String)
+          .filter(file => file.includes('.'));
+      const files = [...Object.keys(bundle), ...publicFiles].sort();
+      const version =
+          createHash('sha256').update(files.join()).digest('hex').slice(0, 12);
+      const source = readFileSync(`${root}src/service_worker.js`, 'utf8')
+          .replace('__VERSION__', JSON.stringify(version))
+          .replace('__FILES__', JSON.stringify(files));
+      this.emitFile({type: 'asset', fileName: 'sw.js', source});
+    },
+  };
+}
+
 export default defineConfig({
   // Relative URLs, so the build works from any path (e.g. GitHub Pages).
   base: './',
@@ -40,7 +66,7 @@ export default defineConfig({
       },
     ],
   },
-  plugins: [inlineAudio()],
+  plugins: [inlineAudio(), serviceWorker()],
   build: {
     rollupOptions: {
       // The coloured game, and the copy of Chrome's offline page.

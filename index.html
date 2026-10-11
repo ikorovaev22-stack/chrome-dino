@@ -4,6 +4,13 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta name="theme-color" content="#0d0e14">
+  <!-- Added to the home screen, the game opens without the browser's bars. -->
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Дино-забег">
+  <link rel="manifest" href="/manifest.webmanifest">
+  <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png">
   <meta name="description" content="Пиксельный забег динозаврика по пяти мирам: сердца, монеты, улучшения, скины, день и ночь. По мотивам офлайн-игры Chrome.">
   <title>Дино-забег</title>
   <link rel="icon" type="image/png" href="./src/images/default_100_percent/offline/100-error-offline.png">
@@ -29,6 +36,7 @@
     </div>
     <p class="loading" id="loading">Загрузка…</p>
   </main>
+  <p class="rotate-hint">Поверните телефон — так экран больше</p>
 
   <footer class="footer">
     <a href="./classic.html">Классическая версия из Chrome</a>

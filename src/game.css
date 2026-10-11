@@ -14,6 +14,9 @@ html,
 body {
   height: 100%;
   margin: 0;
+  /* No rubber-band scrolling or double-tap zoom on phones. */
+  overscroll-behavior: none;
+  touch-action: manipulation;
 }
 
 body {
@@ -26,6 +29,10 @@ body {
   font: 12px/1.4 system-ui, sans-serif;
   justify-content: center;
   overflow: hidden;
+  /* Keep clear of the notch, Dynamic Island and home indicator. layout() in
+     game_main.ts fits the game inside this padding. */
+  padding: env(safe-area-inset-top) env(safe-area-inset-right)
+      env(safe-area-inset-bottom) env(safe-area-inset-left);
   -webkit-tap-highlight-color: transparent;
 }
 
@@ -39,6 +46,7 @@ body {
   position: relative;
   touch-action: manipulation;
   user-select: none;
+  -webkit-touch-callout: none;
   -webkit-user-select: none;
 }
 
@@ -249,6 +257,31 @@ body {
 
 :root:fullscreen .footer {
   display: none;
+}
+
+/* Opened from the home screen: just the game. */
+@media (display-mode: standalone), (display-mode: fullscreen) {
+  .footer {
+    display: none;
+  }
+}
+
+/* Upright phones get a small game; it's bigger sideways. */
+.rotate-hint {
+  bottom: calc(env(safe-area-inset-bottom) + 20px);
+  display: none;
+  left: 0;
+  margin: 0;
+  pointer-events: none;
+  position: fixed;
+  right: 0;
+  text-align: center;
+}
+
+@media (orientation: portrait) and (hover: none) and (pointer: coarse) {
+  .rotate-hint {
+    display: block;
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {

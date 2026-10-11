@@ -25,15 +25,31 @@ const MAX_WIDTH = 600;
 const $ = <T extends HTMLElement = HTMLElement>(id: string) =>
     document.getElementById(id) as T;
 
+/** Fullscreen, or opened from the home screen without the browser's bars. */
+function isImmersive(): boolean {
+  return !!document.fullscreenElement ||
+      matchMedia('(display-mode: standalone), (display-mode: fullscreen)')
+          .matches ||
+      // Safari on iOS before display-mode support.
+      (navigator as Navigator & {standalone?: boolean}).standalone === true;
+}
+
 /**
- * Fits the scene to the window. Canvases are rendered at the final
- * resolution (see setCanvasPixelRatio), so the pixel art stays sharp.
+ * Fits the scene to the window, inside the safe area (the body's padding).
+ * Canvases are rendered at the final resolution (see setCanvasPixelRatio),
+ * so the pixel art stays sharp.
  */
 function layout(): {width: number, ratio: number} {
-  const fullscreen = !!document.fullscreenElement;
-  const footer = fullscreen ? 0 : document.querySelector('.footer')!.clientHeight;
-  const availableWidth = window.innerWidth - (fullscreen ? 0 : 16);
-  const availableHeight = window.innerHeight - footer - (fullscreen ? 0 : 24);
+  const immersive = isImmersive();
+  const body = getComputedStyle(document.body);
+  const safeWidth = window.innerWidth - parseFloat(body.paddingLeft) -
+      parseFloat(body.paddingRight);
+  const safeHeight = window.innerHeight - parseFloat(body.paddingTop) -
+      parseFloat(body.paddingBottom);
+  const footer =
+      immersive ? 0 : document.querySelector('.footer')!.clientHeight;
+  const availableWidth = safeWidth - (immersive ? 0 : 16);
+  const availableHeight = safeHeight - footer - (immersive ? 0 : 24);
   const dpr = window.devicePixelRatio || 1;
   // Backing store pixels per game pixel, in half steps.
   let ratio = Math.floor(availableWidth * dpr / MAX_WIDTH * 2) / 2;
@@ -85,6 +101,10 @@ function toggleFullscreen() {
 }
 
 async function main() {
+  // Offline play from the home screen (see service_worker.js).
+  if (import.meta.env.PROD && 'serviceWorker' in navigator) {
+    navigator.serviceWorker.register('./sw.js').catch(() => {});
+  }
   installHighScoreStore(HIGH_SCORE_KEY);
   const touch = matchMedia('(hover: none) and (pointer: coarse)').matches;
   const isMobile = /Android|iPhone|iPad|iPod/.test(navigator.userAgent);

@@ -2,21 +2,51 @@
  * Short synthesized sound effects for the extended game, in the same 8-bit
  * spirit as the original beeps.
  */
-export class Sfx {
-  private context: AudioContext|null = null;
 
+let shared: AudioContext|null = null;
+let unavailable = false;
+
+/** One audio context for all the sound effects. */
+function audioContext(): AudioContext|null {
+  if (!shared && !unavailable) {
+    try {
+      shared = new AudioContext();
+    } catch {
+      unavailable = true;
+    }
+  }
+  return shared;
+}
+
+/**
+ * Safari on iOS only starts audio from a user gesture, and stops it again
+ * when the app goes to the background, while sounds mostly play from the
+ * game loop. So every tap or key press wakes the context up if needed.
+ */
+function wakeAudio() {
+  const ctx = audioContext();
+  if (!ctx || ctx.state === 'running') {
+    return;
+  }
+  ctx.resume().catch(() => {});
+  // Older iOS versions also want a sound started inside the gesture.
+  const source = ctx.createBufferSource();
+  source.buffer = ctx.createBuffer(1, 1, ctx.sampleRate);
+  source.connect(ctx.destination);
+  source.start();
+}
+
+for (const type of ['touchend', 'pointerdown', 'keydown']) {
+  window.addEventListener(type, wakeAudio, {capture: true, passive: true});
+}
+
+export class Sfx {
   private getContext(): AudioContext|null {
-    if (!this.context) {
-      try {
-        this.context = new AudioContext();
-      } catch {
-        return null;
-      }
+    const ctx = audioContext();
+    if (ctx?.state === 'suspended') {
+      ctx.resume().catch(() => {});
     }
-    if (this.context.state === 'suspended') {
-      this.context.resume();
-    }
-    return this.context;
+    return ctx;
   }
 
   private tone(
